@@ -1,0 +1,21 @@
+name: Test
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.1
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.27.3
+      - run: mkdir -p work/tmp
+      - run: npm ci --prefix launcher --ignore-scripts
+      - run: npm test --prefix launcher
+        env:
+          TMPDIR: ${{ github.workspace }}/work/tmp
+      - run: go test ./config ./middleware ./router ./service ./handler ./repository
