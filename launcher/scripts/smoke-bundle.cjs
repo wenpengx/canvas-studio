@@ -16,8 +16,14 @@ const path = require('node:path');
   runtime.on('log', lines => console.log(lines.at(-1)));
   try {
     await runtime.start({ open: false });
-    const response = await fetch(runtime.gateway.origin + '/canvas');
+    const bootstrap = new URL(runtime.gateway.launchUrl());
+    const session = await fetch(runtime.gateway.origin + '/local/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: bootstrap.hash.slice(1) }) });
+    const cookie = session.headers.get('set-cookie')?.split(';')[0];
+    if (!session.ok || !cookie) throw Error('工作区会话未建立');
+    const response = await fetch(runtime.gateway.origin + '/canvas', { headers: { Cookie: cookie } });
     if (!response.ok || !(await response.text()).includes('<html')) throw Error('工作区 HTTP 页面未就绪');
-    console.log(JSON.stringify({ target, packageRoot: packaged.packageRoot, ready: true, privateProviders: store.value.channels.length, modelCalls: 0 }));
+    const sourceResponse = await fetch(runtime.gateway.origin + '/local/source', { headers: { Cookie: cookie } });
+    if (!sourceResponse.ok || !sourceResponse.headers.get('content-type')?.includes('application/zip') || !(await sourceResponse.arrayBuffer()).byteLength) throw Error('随包对应源码不可下载');
+    console.log(JSON.stringify({ target, packageRoot: packaged.packageRoot, ready: true, sourceDownload: true, privateProviders: store.value.channels.length, modelCalls: 0 }));
   } finally { await runtime.stop(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

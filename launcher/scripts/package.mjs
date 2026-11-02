@@ -36,6 +36,7 @@ const sourceZip = path.join(outputs, `CanvasStudio-Source-${appVersion}.zip`);
 await run('git', ['archive', '--format=zip', `--output=${sourceZip}`, 'HEAD']);
 await checksum(sourceZip);
 await fs.copyFile(sourceZip, path.join(packaged, '对应源码.zip'));
+if (platform === 'darwin') await fs.copyFile(sourceZip, path.join(resources, '对应源码.zip'));
 await fs.writeFile(path.join(resources, 'bundle/bundle-manifest.json'), JSON.stringify({ format: 1, version: appVersion, platform: `${platform}-${arch}`, files: await fileManifest(path.join(resources, 'bundle'), ['bundle-manifest.json']) }));
 // Re-sign the outer bundle after updating its manifest; nested binary signatures are already final.
 if (platform === 'darwin') { await run('/usr/bin/codesign', ['--force', '--sign', '-', appBundle]); await run('/usr/bin/codesign', ['--verify', '--deep', '--strict', appBundle]); }
