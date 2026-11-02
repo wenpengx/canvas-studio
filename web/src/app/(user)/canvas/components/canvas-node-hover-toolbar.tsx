@@ -293,7 +293,7 @@ export function CanvasNodeInfoModal({ node, open, onClose }: { node: CanvasNodeD
     );
 
     return (
-        <Modal className="canvas-node-info-modal" title={title} open={open && Boolean(node)} centered footer={null} onCancel={onClose}>
+        <Modal className="canvas-node-info-modal" title={title} open={open && Boolean(node)} centered footer={null} onCancel={onClose} destroyOnHidden>
             {node ? (
                 <div className="h-[56vh] min-h-[360px] text-sm">
                     {view === "info" ? (

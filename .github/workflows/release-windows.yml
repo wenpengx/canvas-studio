@@ -1,4 +1,4 @@
-name: Build Windows release
+name: Build desktop releases
 on:
   workflow_dispatch:
   push:
@@ -6,51 +6,106 @@ on:
 permissions:
   contents: write
 concurrency:
-  group: windows-release
+  group: desktop-release-${{ github.ref }}
   cancel-in-progress: false
 jobs:
   build:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            platform: win32
+            arch: x64
+          - runner: macos-15
+            platform: darwin
+            arch: arm64
+          - runner: macos-15-intel
+            platform: darwin
+            arch: x64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24.22.1
+          architecture: ${{ matrix.arch }}
       - uses: actions/setup-go@v5
         with:
           go-version: 1.27.3
       - name: Install dependencies
-        shell: pwsh
+        shell: bash
         run: |
+          set -e
           npm ci --prefix web
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           npm ci --prefix integrations/cozyclay
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           npm ci --prefix integrations/cozyclay/mcp
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           npm ci --prefix launcher
-          exit $LASTEXITCODE
-      - name: Verify owned process termination on Windows
-        shell: pwsh
+      - name: Verify process and platform adapters
+        shell: bash
         run: |
-          New-Item -ItemType Directory -Force work/tmp | Out-Null
-          node --test launcher/test/process-control.test.cjs
-          exit $LASTEXITCODE
-      - name: Build portable package
-        run: node launcher/scripts/package.mjs
-      - name: Verify and publish release
-        shell: pwsh
+          mkdir -p work/tmp
+          node --test launcher/test/process-control.test.cjs launcher/test/platform.test.cjs
+      - name: Build native desktop package
+        run: node launcher/scripts/package.mjs --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
+      - name: Start bundled services and verify HTTP readiness
+        timeout-minutes: 5
+        run: node launcher/scripts/smoke-bundle.cjs
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
+          path: |
+            outputs/*.zip
+            outputs/*.sha256
+            !outputs/CanvasStudio-Source-*
+          if-no-files-found: error
+      - name: Upload canonical source archive
+        if: matrix.platform == 'win32'
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-source
+          path: |
+            outputs/CanvasStudio-Source-*.zip
+            outputs/CanvasStudio-Source-*.zip.sha256
+          if-no-files-found: error
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          merge-multiple: true
+          path: outputs
+      - name: Verify and publish complete release
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
-          $releaseVersion = node -p "require('./launcher/package.json').version"
-          $releaseTag = "v$releaseVersion"
-          if ('${{ github.ref_type }}' -eq 'tag' -and '${{ github.ref_name }}' -ne $releaseTag) { throw 'Tag does not match launcher version' }
-          $releaseZip = "outputs/CanvasStudio-Windows-x64-$releaseVersion.zip"
-          $expected = ((Get-Content -LiteralPath "$releaseZip.sha256" -Raw).Trim() -split '\s+')[0]
-          if ((Get-FileHash -LiteralPath $releaseZip -Algorithm SHA256).Hash.ToLower() -ne $expected) { throw 'ZIP hash mismatch' }
-          gh release view $releaseTag --repo $env:GITHUB_REPOSITORY
-          if ($LASTEXITCODE) { gh release create $releaseTag --target '${{ github.sha }}' --title "画布工作台 $releaseVersion" --notes 'Windows x64 便携整合包。完整解压到机械盘后运行启动器。真实模型服务和 Windows 实机功能请按使用说明验收。' }
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          gh release upload $releaseTag $releaseZip "$releaseZip.sha256" --clobber
-          exit $LASTEXITCODE
+          set -euo pipefail
+          version=$(node -p "require('./launcher/package.json').version")
+          tag="v$version"
+          if [ '${{ github.ref_type }}' = tag ] && [ '${{ github.ref_name }}' != "$tag" ]; then echo 'Tag does not match launcher version'; exit 1; fi
+          for target in Windows-x64 macOS-arm64 macOS-x64 Source; do
+            test -f "outputs/CanvasStudio-$target-$version.zip"
+            test -f "outputs/CanvasStudio-$target-$version.zip.sha256"
+          done
+          (cd outputs && sha256sum -c *.sha256)
+          cat > release-notes.md <<'NOTES'
+          ## 下载
+          - Windows 10/11 x64：下载 `CanvasStudio-Windows-x64-版本.zip`，完整解压后打开“画布工作台启动器.exe”。
+          - macOS Apple 芯片：下载 `CanvasStudio-macOS-arm64-版本.zip`。
+          - macOS Intel：下载 `CanvasStudio-macOS-x64-版本.zip`。
+          - 对应源码：下载 `CanvasStudio-Source-版本.zip`；每个整合包也包含“对应源码.zip”。
+          - 同名 `.sha256` 用于验证 ZIP 完整性，普通用户不需要安装 Node、Go 或 FFmpeg。
+
+          macOS：解压后将“画布工作台启动器.app”放入“应用程序”，首次启动按系统“隐私与安全性”中的提示允许打开。此包未使用 Apple Developer ID 签名和公证；不需要关闭系统安全保护。数据保存在 `~/Library/Application Support/Canvas Studio/data`，更新时退出并替换 `.app`。
+
+          在线 AI 需自行配置服务商接口、API Key 和额度。自动构建不代表已完成所有 Windows/macOS 硬件、系统密钥存储、浏览器及真实 AI 的验收；使用与限制请先阅读仓库 README 和桌面使用指南。
+          NOTES
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$tag" --target '${{ github.sha }}' --title "画布工作台 $version · Windows / macOS" --notes-file release-notes.md
+          fi
+          gh release upload "$tag" outputs/*.zip outputs/*.sha256 --clobber --repo "$GITHUB_REPOSITORY"

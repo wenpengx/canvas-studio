@@ -20,19 +20,20 @@ function updateNetworkError(error) {
 }
 function releaseVersion(release) { const version = semver.valid(String(release?.tag_name || '').replace(/^v/, '')); return version && !release.draft && !release.prerelease && !semver.prerelease(version) ? version : null; }
 class ReleaseUpdater extends EventEmitter {
-  constructor({ dataDir, currentVersion, source, fetchImpl = fetch }) {
-    super(); Object.assign(this, { dataDir, currentVersion, source, fetchImpl });
+  constructor({ dataDir, currentVersion, source, fetchImpl = fetch, platform = process.platform === 'darwin' ? 'darwin' : 'win32', arch = process.arch }) {
+    super(); Object.assign(this, { dataDir, currentVersion, source, fetchImpl, platform, arch });
     this.controller = new AbortController();
     if (!semver.valid(currentVersion) || !/^[\w-]+$/.test(source.owner) || !/^[\w.-]+$/.test(source.repository)) throw new Error('更新源或版本配置无效');
     this.root = path.join(dataDir, 'updates'); this.pendingFile = path.join(this.root, 'pending.json');
     this.releaseUrl = `https://github.com/${source.owner}/${source.repository}/releases`;
     this.releases = new Map();
-    this.state = { phase: 'idle', currentVersion, latestVersion: '', selectedVersion: '', versions: [], progress: 0, message: '点击检查更新，或导入完整发行包', releaseUrl: this.releaseUrl, notes: '' };
+    this.state = { phase: 'idle', currentVersion, latestVersion: '', selectedVersion: '', versions: [], progress: 0, message: platform === 'darwin' ? 'macOS 更新下载校验后，请退出启动器并手动替换 .app' : '点击检查更新，或导入完整发行包', releaseUrl: this.releaseUrl, notes: '', manualInstall: platform === 'darwin' };
   }
   status() { return { ...this.state }; }
   pendingSelection() { return this.staged ? { selectedVersion: this.staged.version, intent: this.staged.intent, notes: String(this.releases.get(this.staged.version)?.body || '').slice(0, 20000) } : {}; }
   update(value) { Object.assign(this.state, value); this.emit('status', this.status()); }
   async initialize() {
+    if (this.platform === 'darwin') return this;
     try {
       const pending = JSON.parse(await fs.readFile(this.pendingFile, 'utf8'));
       if (!/^[a-f0-9-]{36}$/.test(pending.id) || !semver.valid(pending.version)) throw new Error('待安装更新记录无效');
@@ -85,7 +86,8 @@ class ReleaseUpdater extends EventEmitter {
     return this.prepareVersion(version);
   }
   intent(version) { return semver.gt(version, this.currentVersion) ? 'upgrade' : semver.lt(version, this.currentVersion) ? 'rollback' : 'repair'; }
-  hasAssets(release, version) { const name = `CanvasStudio-Windows-x64-${version}.zip`; return Boolean(release.assets?.some(e => e.name === name) && release.assets?.some(e => e.name === name + '.sha256')); }
+  assetName(version) { return this.platform === 'darwin' ? `CanvasStudio-macOS-${this.arch}-${version}.zip` : `CanvasStudio-Windows-x64-${version}.zip`; }
+  hasAssets(release, version) { const name = this.assetName(version); return Boolean(release.assets?.some(e => e.name === name) && release.assets?.some(e => e.name === name + '.sha256')); }
   async selectVersion(version) {
     if (this.downloadPromise || this.checkPromise || this.selectPromise) throw new Error('请等待当前更新操作完成');
     this.selectPromise = this.prepareVersion(version).catch(error => { this.update({ ...this.pendingSelection(), phase: this.staged ? 'ready' : 'error', message: `选择版本失败：${error.message}` }); throw error; }).finally(() => { this.selectPromise = null; }); return this.selectPromise;
@@ -93,9 +95,9 @@ class ReleaseUpdater extends EventEmitter {
   async prepareVersion(version) {
     const release = this.releases.get(version); if (!release || !semver.valid(version)) throw new Error('请先读取版本列表，再选择一个正式版本');
     this.update({ phase: 'checking', message: `正在核对版本 ${version} 的发行文件…` });
-    const name = `CanvasStudio-Windows-x64-${version}.zip`;
+    const name = this.assetName(version);
     const asset = release.assets?.find(entry => entry.name === name), checksum = release.assets?.find(entry => entry.name === name + '.sha256');
-    if (!asset || !checksum || !Number.isSafeInteger(asset.size) || asset.size <= 0 || asset.size > 2 * 1024 ** 3) throw new Error('发行版缺少 Windows 整合包或 SHA-256 校验文件');
+    if (!asset || !checksum || !Number.isSafeInteger(asset.size) || asset.size <= 0 || asset.size > 2 * 1024 ** 3) throw new Error('发行版缺少当前平台整合包或 SHA-256 校验文件');
     const downloadUrl = this.assetUrl(asset.browser_download_url), checksumUrl = this.assetUrl(checksum.browser_download_url);
     if (checksum.size > 4096) throw new Error('校验文件大小异常');
     const hashResponse = await this.request(checksumUrl), hashText = await hashResponse.text();
@@ -105,7 +107,7 @@ class ReleaseUpdater extends EventEmitter {
     if (asset.digest && asset.digest !== 'sha256:' + expected) throw new Error('GitHub 文件摘要与发行校验值不一致');
     const intent = this.intent(version);
     this.candidate = { version, name, size: asset.size, expected, url: downloadUrl, intent };
-    this.update({ phase: this.staged?.version === version ? 'ready' : 'available', selectedVersion: version, intent, notes: String(release.body || '').slice(0, 20000), progress: this.staged?.version === version ? 100 : 0, message: this.staged?.version === version ? `版本 ${version} 已校验，可以重启安装` : intent === 'upgrade' ? `发现新版本 ${version}，可下载并校验后安装` : `已选择${intent === 'rollback' ? '回退' : '重装'}版本 ${version}，下载校验后可安装` });
+    this.update({ phase: this.staged?.version === version ? 'ready' : 'available', selectedVersion: version, intent, notes: String(release.body || '').slice(0, 20000), progress: this.staged?.version === version ? 100 : 0, message: this.platform === 'darwin' ? `已选择版本 ${version}，下载校验后退出启动器并手动替换 .app` : this.staged?.version === version ? `版本 ${version} 已校验，可以重启安装` : intent === 'upgrade' ? `发现新版本 ${version}，可下载并校验后安装` : `已选择${intent === 'rollback' ? '回退' : '重装'}版本 ${version}，下载校验后可安装` });
     return this.status();
   }
   async download() {
@@ -141,6 +143,11 @@ class ReleaseUpdater extends EventEmitter {
         if (bytes !== candidate.size || hash.digest('hex') !== candidate.expected) throw new Error('下载内容的 SHA-256 或大小不匹配');
         await fs.rename(partial, file);
       } finally { await fs.rm(partial, { force: true }); }
+    }
+    if (this.platform === 'darwin') {
+      this.downloadedFile = file;
+      this.update({ phase: 'downloaded', progress: 100, message: `版本 ${candidate.version} 已通过大小和 SHA-256 校验。请退出启动器，解压并手动替换 .app；数据目录保留` });
+      return this.status();
     }
     this.update({ phase: 'verifying', progress: 100, message: '正在解压并校验全部程序文件…' });
     const staged = await stageUpdate(file, this.dataDir);

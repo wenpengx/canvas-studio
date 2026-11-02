@@ -1,7 +1,15 @@
-# 无限画布文档索引
+# Canvas Studio 文档索引
+
+## 桌面整合版
+
+- [桌面版使用指南：Windows／macOS](overview/desktop-guide.md)
+- [项目结构与当前状态](overview/project-status.md)
+- [桌面发行构建与源码包](desktop-build.md)
+- [可下载发行版](https://github.com/wenpengx/canvas-studio/releases)
 
 ## 项目介绍
 
+- [界面截图与来源](overview/screenshots.md)
 - [快速开始](overview/quick-start.md)
 - [功能介绍](overview/features.md)
 - [Docker 部署](overview/docker.md)
@@ -36,5 +44,6 @@
 
 ## 说明
 
-- 未登录时画布项目和“我的素材”保存在浏览器本地；登录且账号同步可用时，会同步保存到账号/云端。
-- 本地直连模式下，AI API Key 保存在浏览器本地，并由前端直接请求 OpenAI 兼容接口。
+- 桌面整合版由启动器管理本机数据库、素材和系统加密的模型密钥；详见桌面指南。
+- 源码 Web 版未登录时，画布项目和“我的素材”保存在浏览器本地；登录且账号同步可用时，可同步保存到账号／云端。
+- Web 本地直连模式的 AI API Key 保存在浏览器本地，并由前端直接请求 OpenAI 兼容接口。

@@ -95,6 +95,8 @@ function renderUpdate(value) {
   $('#update-version').textContent = `当前版本 ${value.currentVersion}${value.latestVersion ? ' · 最新正式版 ' + value.latestVersion : ''}${value.selectedVersion ? ' · 已选 ' + value.selectedVersion : ''}`;
   $('#update-message').textContent = value.message; $('#update-progress').hidden = !['downloading', 'verifying'].includes(value.phase); $('#update-progress').value = value.progress;
   $('#check-update').disabled = busy; $('#download-update').disabled = busy || value.phase !== 'available'; $('#install-update').disabled = value.phase !== 'ready'; $('#import-update').disabled = busy;
+  $('#install-update').hidden = $('#import-update').hidden = Boolean(value.manualInstall);
+  $('#import-update').closest('article').hidden = Boolean(value.manualInstall);
   $('#update-notes').hidden = !value.notes; $('#update-notes').textContent = value.notes || '';
   const versions = $('#release-versions');
   const previous = versions.value;
@@ -102,7 +104,7 @@ function renderUpdate(value) {
   if (value.versions?.some(item => item.version === previous)) versions.value = previous; else if (value.selectedVersion && value.versions?.some(item => item.version === value.selectedVersion)) versions.value = value.selectedVersion;
   versions.disabled = busy || !value.versions?.length; $('#select-release').disabled = busy || !versions.value || Boolean(versions.selectedOptions[0]?.disabled);
   if (value.versions?.length && versions.value !== value.selectedVersion) { $('#download-update').disabled = true; $('#install-update').disabled = true; }
-  $('#download-update').textContent = value.intent === 'rollback' ? '下载并校验回退包' : value.intent === 'repair' ? '下载并校验重装包' : '下载并校验更新';
+  $('#download-update').textContent = value.manualInstall ? '下载并校验整合包' : value.intent === 'rollback' ? '下载并校验回退包' : value.intent === 'repair' ? '下载并校验重装包' : '下载并校验更新';
   $('#install-update').textContent = value.intent === 'rollback' ? '回退并重启' : value.intent === 'repair' ? '重装并重启' : '重启安装更新';
   $('#update-hint').hidden = !['available', 'ready'].includes(value.phase);
 }

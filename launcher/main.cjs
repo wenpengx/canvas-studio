@@ -9,14 +9,14 @@ const { ReleaseUpdater } = require('./lib/release-update.cjs');
 const { createUpdateFetch } = require('./lib/update-network.cjs');
 const updateSource = require('./update-source.json');
 
-const portableRoot = app.isPackaged ? path.dirname(process.execPath) : process.env.CANVAS_DEV_ROOT || path.resolve(__dirname, '..', 'work', 'portable-dev');
+const portableRoot = app.isPackaged ? process.platform === 'darwin' ? path.join(app.getPath('appData'), 'Canvas Studio') : path.dirname(process.execPath) : process.env.CANVAS_DEV_ROOT || path.resolve(__dirname, '..', 'work', 'portable-dev');
 let dataDir = path.join(portableRoot, 'data');
 try {
   const locator = JSON.parse(fs.readFileSync(path.join(portableRoot, 'portable.json'), 'utf8'));
   dataDir = path.resolve(portableRoot, locator.dataDir);
   if (!fs.statSync(dataDir).isDirectory()) throw new Error('数据目录不可用');
 } catch (error) {
-  if (error.code !== 'ENOENT' || fs.existsSync(path.join(portableRoot, 'portable.json'))) { dialog.showErrorBox('机械盘数据目录不可用', error.message); app.exit(1); }
+  if (error.code !== 'ENOENT' || fs.existsSync(path.join(portableRoot, 'portable.json'))) { dialog.showErrorBox('数据目录不可用', error.message); app.exit(1); }
 }
 fs.mkdirSync(dataDir, { recursive: true });
 for (const name of ['tmp', 'cache', 'logs', 'launcher-profile']) fs.mkdirSync(path.join(dataDir, name), { recursive: true });
@@ -34,12 +34,12 @@ else {
   app.on('second-instance', () => { window?.show(); window?.focus(); });
   app.whenReady().then(async () => {
     const encrypt = async secret => {
-      if (!await safeStorage.isAsyncEncryptionAvailable()) throw new Error('Windows 密钥加密不可用，请重新登录 Windows 后重试');
+      if (!await safeStorage.isAsyncEncryptionAvailable()) throw new Error('系统密钥加密不可用，请解锁系统密钥存储后重试');
       return safeStorage.encryptStringAsync(secret);
     };
     const decrypt = async bytes => (await safeStorage.decryptStringAsync(bytes)).result;
     store = await new ConfigStore(portableRoot, encrypt, decrypt).initialize();
-    const bundleRoot = process.env.CANVAS_BUNDLE_ROOT || (app.isPackaged ? path.join(portableRoot, 'resources', 'bundle') : path.resolve(__dirname, '..', 'work', 'bundle-linux'));
+    const bundleRoot = process.env.CANVAS_BUNDLE_ROOT || (app.isPackaged ? path.join(process.resourcesPath, 'bundle') : path.resolve(__dirname, '..', 'work', `bundle-${process.platform}-${process.arch}`));
     runtime = new Runtime({ store, root: bundleRoot, development: !app.isPackaged, chooseFolder: async () => { const result = await dialog.showOpenDialog(window, { title: '选择 FOR 循环的输入文件夹', properties: ['openDirectory'] }); return result.canceled ? null : result.filePaths[0]; } });
     updater = await new ReleaseUpdater({ dataDir: store.dataDir, currentVersion: app.getVersion(), source: updateSource, fetchImpl: createUpdateFetch(net) }).initialize();
     window = new BrowserWindow({ width: 1120, height: 780, minWidth: 960, minHeight: 680, title: '画布工作台启动器', backgroundColor: '#f6f7fb', autoHideMenuBar: true, webPreferences: { preload: path.join(__dirname, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true } });
@@ -84,10 +84,10 @@ else {
         if (result.canceled) return null;
         await store.selectDataDir(result.filePaths[0]); app.relaunch(); app.quit(); return true;
       },
-      'browser:choose': async () => { const result = await dialog.showOpenDialog(window, { title: '选择浏览器主程序（Chrome、Edge、Firefox 或其他 Chromium 浏览器）', properties: ['openFile'], ...(process.platform === 'win32' ? { filters: [{ name: '浏览器程序', extensions: ['exe'] }] } : {}) }); return result.canceled ? '' : result.filePaths[0]; },
+      'browser:choose': async () => { const result = await dialog.showOpenDialog(window, { title: '选择浏览器主程序（Chrome、Edge、Firefox 或其他 Chromium 浏览器）', properties: ['openFile'], ...(process.platform === 'win32' ? { filters: [{ name: '浏览器程序', extensions: ['exe'] }] } : process.platform === 'darwin' ? { filters: [{ name: '浏览器应用', extensions: ['app'] }] } : {}) }); return result.canceled ? '' : result.filePaths[0]; },
       'update:check': () => updater.check(),
       'update:select': (_event, version) => updater.selectVersion(version),
-      'update:download': () => updater.download(),
+      'update:download': async () => { const result = await updater.download(); if (updater.downloadedFile) shell.showItemInFolder(updater.downloadedFile); return result; },
       'update:open-release': () => shell.openExternal(updater.releaseUrl),
       'update:install': async () => {
         if (process.platform !== 'win32' || !app.isPackaged) throw new Error('重启安装需要在 Windows 整合包中执行');
@@ -97,6 +97,7 @@ else {
         await require('./lib/update.cjs').applyUpdate(staged, portableRoot, process.pid, store.dataDir); app.quit();
       },
       'update:import': async () => {
+        if (process.platform === 'darwin') throw new Error('macOS 请从发布页下载对应架构整合包，退出启动器后手动替换 .app；数据目录会保留');
         const result = await dialog.showOpenDialog(window, { title: '选择画布工作台发行包 ZIP', properties: ['openFile'], filters: [{ name: '工作台整合包', extensions: ['zip'] }] });
         if (result.canceled) return null;
         const { stageUpdate, applyUpdate } = require('./lib/update.cjs');

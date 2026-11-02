@@ -25,14 +25,18 @@ export async function fileManifest(root, excluded = []) {
   await visit(root); return files.sort((a,b) => a.path.localeCompare(b.path));
 }
 
-export async function prepareBundle(platform) {
-  const bundle = path.join(sourceRoot, 'work', `bundle-${platform === 'win32' ? 'windows' : 'linux'}`);
+export async function prepareBundle(platform, arch = process.arch) {
+  if (!['win32', 'darwin', 'linux'].includes(platform) || !['x64', 'arm64'].includes(arch)) throw new Error('不支持的构建平台或架构');
+  const bundle = path.join(sourceRoot, 'work', `bundle-${platform}-${arch}`);
   await fs.mkdir(path.join(bundle, 'runtime'), { recursive: true });
-  await mediaRuntime(sourceRoot, bundle, platform);
-  if (platform !== 'win32') await fs.copyFile(process.execPath, path.join(bundle, 'runtime/node'));
+  await mediaRuntime(sourceRoot, bundle, platform, arch);
+  if (platform === process.platform && arch === process.arch) {
+    await fs.copyFile(process.execPath, path.join(bundle, 'runtime', platform === 'win32' ? 'node.exe' : 'node'));
+    if (platform !== 'win32') await fs.chmod(path.join(bundle, 'runtime/node'), 0o755);
+  }
   let go = process.env.GO_BINARY || path.join(sourceRoot, 'work/toolchains/go/bin/go');
   try { await fs.access(go); } catch { go = 'go'; }
-  await run(go, ['build', '-trimpath', '-ldflags=-s -w', '-o', path.join(bundle, 'runtime', platform === 'win32' ? 'canvas-api.exe' : 'canvas-api'), '.'], { env: { ...process.env, TMPDIR: path.join(sourceRoot, 'work/tmp'), GOPATH: path.join(sourceRoot, 'work/cache/go'), GOCACHE: path.join(sourceRoot, 'work/cache/go-build'), CGO_ENABLED: '0', GOOS: platform === 'win32' ? 'windows' : 'linux', GOARCH: 'amd64' } });
+  await run(go, ['build', '-trimpath', '-ldflags=-s -w', '-o', path.join(bundle, 'runtime', platform === 'win32' ? 'canvas-api.exe' : 'canvas-api'), '.'], { env: { ...process.env, TMPDIR: path.join(sourceRoot, 'work/tmp'), GOPATH: path.join(sourceRoot, 'work/cache/go'), GOCACHE: path.join(sourceRoot, 'work/cache/go-build'), CGO_ENABLED: '0', GOOS: platform === 'win32' ? 'windows' : platform, GOARCH: arch === 'x64' ? 'amd64' : 'arm64' } });
   await fs.rm(path.join(bundle, 'web'), { recursive: true, force: true });
   await fs.cp(path.join(sourceRoot, 'web/.next/standalone'), path.join(bundle, 'web'), { recursive: true, dereference: true });
   await fs.cp(path.join(sourceRoot, 'web/.next/static'), path.join(bundle, 'web/.next/static'), { recursive: true });
@@ -53,4 +57,4 @@ export async function prepareBundle(platform) {
   await fs.writeFile(path.join(bundle, 'bundle-manifest.json'), JSON.stringify({ format: 1, version: appVersion, files: await fileManifest(bundle, ['bundle-manifest.json']) }));
   return bundle;
 }
-if (process.argv[1] === fileURLToPath(import.meta.url)) console.log(await prepareBundle(process.argv.includes('--windows') ? 'win32' : 'linux'));
+if (process.argv[1] === fileURLToPath(import.meta.url)) console.log(await prepareBundle(process.argv.includes('--windows') ? 'win32' : process.platform));

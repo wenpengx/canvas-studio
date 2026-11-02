@@ -706,6 +706,7 @@ export function CanvasAssistantPanel({
                 <Modal
                     title="Agent 设置"
                     open={settingsOpen}
+                    destroyOnHidden
                     centered
                     width={520}
                     onCancel={() => setSettingsOpen(false)}
@@ -741,6 +742,7 @@ export function CanvasAssistantPanel({
                 <Modal
                     title="删除对话记录？"
                     open={deleteChatIds.length > 0}
+                    destroyOnHidden
                     centered
                     onCancel={() => setDeleteChatIds([])}
                     footer={

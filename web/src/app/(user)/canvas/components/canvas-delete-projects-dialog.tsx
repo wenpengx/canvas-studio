@@ -25,6 +25,7 @@ export function CanvasDeleteProjectsDialog() {
         <Modal
             title="删除画布？"
             open={ids.length > 0}
+            destroyOnHidden
             centered
             onCancel={() => setDeleteIds([])}
             footer={

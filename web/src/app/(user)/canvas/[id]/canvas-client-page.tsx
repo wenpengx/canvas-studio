@@ -4893,6 +4893,7 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
                 <Modal
                     title="截取音频"
                     open={Boolean(audioTrimNode)}
+                    destroyOnHidden
                     centered
                     width={360}
                     confirmLoading={trimmingAudio}
@@ -5000,7 +5001,7 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
 
                 {upscaleNode?.metadata?.content ? <CanvasNodeUpscaleDialog dataUrl={upscaleNode.metadata.content} open={Boolean(upscaleNode)} onClose={() => setUpscaleNodeId(null)} onConfirm={(params) => void upscaleImageNode(upscaleNode!, params)} /> : null}
 
-                <Modal title="AI 超分" open={Boolean(superResolveNode?.metadata?.content)} centered footer={null} onCancel={() => setSuperResolveNodeId(null)}>
+                <Modal title="AI 超分" open={Boolean(superResolveNode?.metadata?.content)} centered footer={null} onCancel={() => setSuperResolveNodeId(null)} destroyOnHidden>
                     <div className="py-8 text-center text-base font-medium">暂未实现</div>
                 </Modal>
 
@@ -5033,6 +5034,7 @@ function InfiniteCanvasPage({ projectId }: { projectId: string }) {
                 <Modal
                     title="清空画布？"
                     open={clearConfirmOpen}
+                    destroyOnHidden
                     centered
                     onCancel={() => setClearConfirmOpen(false)}
                     footer={
@@ -5428,7 +5430,7 @@ function CanvasTopBar({
                     ) : null}
                 </div>
             </div>
-            <Modal title="快捷键" open={shortcutsOpen} onCancel={() => setShortcutsOpen(false)} footer={null} centered>
+            <Modal title="快捷键" open={shortcutsOpen} onCancel={() => setShortcutsOpen(false)} footer={null} centered destroyOnHidden>
                 <div className="space-y-2 border-t pt-4 text-sm" style={{ borderColor: theme.node.stroke }}>
                     <Shortcut keys={["Space", "拖动"]} value="临时反转选择/移动工具" />
                     <Shortcut keys={["滚轮"]} value="缩放画布" />

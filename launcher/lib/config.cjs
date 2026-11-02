@@ -3,7 +3,7 @@ const path = require('node:path');
 const { atomicJson, writableDirectory } = require('./files.cjs');
 
 const roles = { director: '白模导演', text: '画布文字', image: '图片生成', video: '视频生成' };
-const defaults = { channels: [], directorModel: '', directorChannelId: '', textModel: '', textChannelId: '', imageModel: '', imageChannelId: '', videoModel: '', videoChannelId: '', browser: 'edge', browserPath: '', port: 17860, autoCheckUpdates: true };
+const defaults = { channels: [], directorModel: '', directorChannelId: '', textModel: '', textChannelId: '', imageModel: '', imageChannelId: '', videoModel: '', videoChannelId: '', browser: process.platform === 'darwin' ? 'chrome' : 'edge', browserPath: '', port: 17860, autoCheckUpdates: true };
 const capabilityFor = role => role === 'director' ? 'text' : role;
 const directorModelId = (channelId, model) => `${channelId}::${model}`;
 const text = (value, name, limit = 8192) => { if (typeof value !== 'string' || value.length > limit) throw new Error(`${name}格式无效`); return value.trim(); };

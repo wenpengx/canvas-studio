@@ -1,96 +1,110 @@
-# Windows 便携整合包
+# 桌面发行构建
 
-发行文件位于 `outputs/CanvasStudio-Windows-x64-1.2.0.zip`。完整解压到机械盘后双击启动器，不需要另外安装开发环境。界面与故障处理参见 `launcher/使用说明.txt`。
+桌面版使用同一份仓库源码，分别在 Windows x64、Apple Silicon Mac（ARM64）和 Intel Mac（x64）上构建。普通使用者直接下载 [Releases](https://github.com/wenpengx/canvas-studio/releases) 的完整整合包，安装与数据说明见[桌面使用指南](overview/desktop-guide.md)。源码 ZIP 不能代替可运行包。
 
-## 组成
+## 组成与平台
 
-- `launcher/`：Electron 中文启动器、加密配置、进程管理、浏览器启动、本机网关、GitHub Releases 在线更新、离线发行包校验及更新。
-- Go 服务：通过 `CANVAS_LOCAL_TOKEN` 启用本机模式，固定本地身份，SQLite 保存画布和任务，素材保存到数据目录。
-- `web/`：画布前端，去掉登录、营销公告和主界面版本／GitHub 图标，模型配置与启动器共用。
-- `integrations/cozyclay/`：固定上游源码及画布适配。完整项目文件带引擎及格式版本，保存场景、动作、镜头、模型及参考图。
+| 目标 | 构建环境 | 发行文件 |
+| --- | --- | --- |
+| Windows x64 | 原生 Windows x64 | `CanvasStudio-Windows-x64-<version>.zip` |
+| macOS ARM64 | 原生 ARM64 macOS | `CanvasStudio-macOS-arm64-<version>.zip` |
+| macOS x64 | 原生 Intel macOS | `CanvasStudio-macOS-x64-<version>.zip` |
+| 对应源码 | 已提交的同一 Git HEAD | `CanvasStudio-Source-<version>.zip` |
 
-网关只监听 `127.0.0.1`，通过启动器建立本机会话。Go 服务仅接收进程内部凭据；浏览器不接收真实模型 API Key。模型调用由本机网关读取加密配置后转发。CozyClay 的 HTTP 和 WebSocket 使用 `/cozy/` 路由。默认禁用上游自更新、遥测和额外动作模型下载。
+每个 ZIP 同时生成 `.sha256`。桌面包内还附有 `对应源码.zip`、使用说明、文件清单和第三方许可。源码归档来自已提交、受 Git 跟踪的源文件，排除 `.git`、本地依赖、构建缓存、输出和用户数据。准备发行时先提交该版本的全部改动，避免构建产物与公开源码不一致。
 
-模型设置支持多个独立渠道，每个渠道配置名称、接口、加密密钥、启用状态及带类型的模型列表。默认选择保存渠道编号与模型名，画布沿用原有渠道选择器。代理地址带渠道编号，任务查询保持原渠道；导演台的同名模型使用内部唯一编号转发，并向服务商还原真实模型名。上一版单渠道设置和密钥会在读取时保留为“默认渠道”。
+不承诺在一个系统上交叉打包所有平台，也不提供 Linux 桌面发行包。macOS 构建执行 ad-hoc 签名和完整性校验，当前未配置 Developer ID 签名与 Apple 公证；本机首次打开、钥匙串权限和 GPU／视频编码须实机确认。
 
-## 从源码构建
+## 运行结构
 
-可在 Linux x64 交叉构建，或在 Windows 上构建 Windows x64 整合包。开发机需要 Node.js 24.22.1、npm 及 Go 1.27.3；最终用户不需要这些工具。先核对实际挂载，所有缓存、中间文件和下载均置于机械盘的 `work/`。
+- `launcher/`：Electron 中文启动器、渠道配置、系统加密、浏览器启动、本机网关、进程管理、更新、MCP 及目录授权。
+- Go 服务：通过本机模式保存项目、素材、任务和 Skill，使用数据目录内的 SQLite。
+- `web/`：画布前端与浏览器工作区，桌面模式复用启动器模型配置。
+- `integrations/cozyclay/`：固定的导演台源码与画布适配，完整项目保存场景、动作、镜头、模型和参考图。
+- `runtime/`：随包提供的 Node、Go 服务和视频解码组件，普通使用者不需另外安装开发环境。
 
-```bash
-mkdir -p work/tmp work/cache outputs
-export TMPDIR="$PWD/work/tmp"
-export npm_config_cache="$PWD/work/cache/npm"
-export ELECTRON_CACHE="$PWD/work/cache/electron"
-export GOPATH="$PWD/work/cache/go"
-export GOCACHE="$PWD/work/cache/go-build"
+本机网关监听 `127.0.0.1`。浏览器不接收桌面配置中真实模型 API Key，由网关读取系统加密配置后转发。Windows 使用系统加密；macOS 使用系统钥匙串，不使用明文回退。CozyClay 的 HTTP 和 WebSocket 经 `/cozy/` 路由，默认禁用上游自更新、遥测和额外动作模型下载。
+
+## 本地构建
+
+开发机需准备 Node.js、npm、Go 和 Git。发行工作流固定 Node.js `24.22.1`、Go `1.27.3`；依赖按各目录的 `package-lock.json` 安装，Electron 版本由 `launcher/package.json` 固定。构建时需要网络下载依赖和经过校验的运行时。
+
+在对应系统与架构的仓库根目录执行：
+
+```sh
 npm ci --prefix web
 npm ci --prefix integrations/cozyclay
 npm ci --prefix integrations/cozyclay/mcp
 npm ci --prefix launcher
-node launcher/scripts/package.mjs
 ```
 
-也可用 `GO_BINARY` 指定 Go 程序路径。脚本下载并校验 Node Windows 运行时，交叉编译 Go 服务，构建前端和导演台，加入 Windows 原生依赖，生成 Electron 程序、文件清单、对应源码 ZIP 和 SHA-256 文件。打包无需 Bun。
+选择与宿主一致的一条打包命令：
 
-发行包不会携带用户 `data/` 或 `portable.json`。更新先在数据目录下解压、校验完整清单，再停止服务，由 Windows PowerShell 等待启动器退出后替换程序文件。用户数据保留；失败原因写入 `data/logs/update.log`。
+```sh
+# Windows x64
+node launcher/scripts/package.mjs --platform=win32 --arch=x64
 
-切换数据目录是切换工作区，不复制原数据；跨 Windows 用户后原密钥无法解密时需重新填写。不创建用户数据的额外备份。
+# Apple Silicon Mac
+node launcher/scripts/package.mjs --platform=darwin --arch=arm64
 
-## 验证
+# Intel Mac
+node launcher/scripts/package.mjs --platform=darwin --arch=x64
+```
 
-```bash
+省略平台和架构参数时使用宿主默认值。`--skip-build` 只适用于当前源码的前端与 CozyClay 已构建完成时，不能用于跳过必要产物。打包脚本和资源准备脚本将缓存、中间文件放入仓库 `work/`，成品写入 `outputs/`。可用 `GO_BINARY` 指定 Go 程序；不需要 Bun 来执行桌面打包入口。
+
+脚本构建前端、导演台和 Go 服务，收集目标系统的原生依赖，下载并核对 Node／FFmpeg，生成 Electron 应用、文件清单、源码归档和摘要。不能把其他平台的 `node_modules` 或已编译运行时直接混入目标包。
+
+## 数据位置
+
+| 平台 | 默认数据目录 | 位置文件 |
+| --- | --- | --- |
+| Windows | 解压目录的 `data/` | 解压目录的 `portable.json` |
+| macOS | `~/Library/Application Support/Canvas Studio/data/` | `~/Library/Application Support/Canvas Studio/portable.json` |
+
+项目、数据库、素材、输出、日志、专用浏览器资料和配置都属于数据目录。发行包不携带这些用户数据。切换数据目录是切换工作区，不自动复制原数据；备份时先保存并停止服务，再复制完整数据目录和位置文件。跨设备或系统用户后，原密钥可能无法解密，需要重新输入。
+
+浏览器发现支持 Windows 安装位置，以及 macOS `/Applications`、`~/Applications` 下的 Chrome、Edge、Firefox；macOS 自选浏览器可选择 `.app`。专用资料、缓存和下载放在数据目录，下载输出默认位于 `outputs/`。
+
+## GitHub 发布
+
+`.github/workflows/release-windows.yml` 的显示名称为 `Build desktop releases`，分别使用 Windows x64、macOS ARM64 和 macOS Intel runner。文件名保留不代表仅构建 Windows。
+
+1. 同步根目录 `VERSION`、`launcher/package.json` 及锁文件中的版本，整理 `CHANGELOG.md`，保留空的 `Unreleased`。
+2. 提交这一版全部改动，再打 `v<version>` 标签。
+3. 推送标签触发工作流，或在 Actions 手动运行该工作流。
+4. 等待各平台的独立任务完成，核对 Release 附件、源码、SHA-256 和 CI 结果。
+5. 在对应系统下载、解压并实机验证后，再将相关待测试项认定为通过。
+
+发行版本使用 `v<launcher/package.json 的 version>`。本仓库更新源由 `launcher/update-source.json` 指向 `wenpengx/canvas-studio`，读取本整合项目的正式 Release，不会拉取无限画布或 CozyClay 的上游新代码。重新分发旧仓库的现成二进制不会自动改变其内置更新源，应以当前源码构建的本仓库发行包为准。
+
+Windows 在线更新读取全部正式版本，保存升级／重装／回退意图，校验 ZIP、摘要和完整文件清单，再重启替换程序。也可导入完整的 Windows 发行 ZIP；Source code ZIP 不是更新包。更新保留 `data/` 和 `portable.json`，不会把新版数据转换成旧版格式，回退前应备份。
+
+macOS 当前采用手动更新：保存并退出后替换 `.app`，外部数据目录保留；没有实现 Mac 原位自动安装更新。当前不配置 Developer ID 签名、Apple 公证和应用商店发布。
+
+## 开发验证入口
+
+以下是仓库现有的验证入口，供开发者在相应改动和环境下选择执行；列出命令不表示本次都已运行，也不把固定测试服务视为真实 AI 结果。
+
+```sh
 npm test --prefix launcher
+go test ./config ./middleware ./router ./service ./handler ./repository
 node launcher/test/launcher-models.cjs
 node launcher/test/browser-launcher.cjs
 node launcher/test/update-launcher.cjs
-go test ./config ./middleware ./router ./service ./handler ./repository
-web/node_modules/.bin/tsc --noEmit -p web/tsconfig.json
 node integrations/cozyclay/test/motion3/verify-motion3-core.mjs
 node integrations/cozyclay/test/verify-project.mjs
 node integrations/cozyclay/test/verify-scene-assets.mjs
-node launcher/scripts/prepare-bundle.mjs
-node launcher/headless.cjs
-# 在另一个终端运行：
-node launcher/test/browser-smoke.cjs
-node launcher/test/agent-transport.cjs
-node launcher/test/multi-channel.cjs
 ```
 
-联调数据位于 `work/smoke-data/`，可通过 `CANVAS_SMOKE_DATA_DIR` 指定，不进入发行包。浏览器测试使用系统 Chrome，验证动作编译、模型导入、截图／MP4 回传、新浏览器资料下的恢复和写入失败提示。接口传输测试使用本地 SSE 测试替身，验证连续两轮请求与会话路径，不代表真实付费 AI 服务的生成质量。在线 AI 需配置支持工具调用／视觉输入的服务。
+完整浏览器／MCP 联调可使用 `launcher/headless.cjs` 配合 `launcher/test/browser-smoke.cjs`、`agent-transport.cjs`、`multi-channel.cjs`、`workspace-smoke.cjs` 等脚本。相关脚本可能需要准备构建产物、系统浏览器、测试目录或视频样例，应先阅读脚本的输入要求，使用独立测试数据。
 
-Windows 10/11 实机启动、Windows 密钥加密、真实服务商调用和 Windows 更新应用流程须单独验收，Linux 联调不替代这些项目。
+现有文档记录的 Linux 联调不能替代 Windows 与 macOS 的真实启动、密钥加密、系统代理、GPU、视频输出和更新体验。当前结果及未覆盖范围写入 [待测试](progress/pending-test.md)，后续事项维护在 [TODO](progress/todo.md)。
 
-## GitHub 更新源与发布
+## MCP、Skill 与视频运行组件
 
-更新源固定在 `launcher/update-source.json`，当前为 `jianye0012-source/canvas-studio`。启动器只读取本仓库的正式 GitHub Release，不拉取两个上游项目的新代码。可关闭启动时检查，也可随时手动检查。断网或 GitHub 限流不会阻止已有工作区运行。
+桌面画布 MCP 为 `/mcp/canvas`，导演台 MCP 为 `/mcp/director`，都要求本整合包的本机凭据。stdio 桥读取 `data/config/mcp-connection.json`，启动时更新端口。多个页面须明确目标工作区；目录授权通过原生对话框获取不透明编号，不把任意路径当作已授权输入。
 
-发行版 tag 使用 `v<launcher/package.json 的 version>`，同时上传 `CanvasStudio-Windows-x64-<version>.zip` 与同名 `.sha256`。框架核对版本、来源、大小、GitHub 文件摘要、SHA-256 和解压后的全部文件清单，再允许重启安装；已校验的待安装更新保存在数据目录，关闭后可恢复。
+Skill 复用本机数据库和用户 Skill API。Markdown 内容作为模型指令，不执行代码。文件夹循环每次推进先保存项目，任务状态未确认时停止自动提交；重新打开不会自动重发付费生成。
 
-仓库的 `Build Windows release` 工作流支持手动运行，也在版本 tag 推送后构建并发布。发布前同步更新 `launcher/package.json`、锁文件、根目录 `VERSION` 和变更记录。下载页为 <https://github.com/jianye0012-source/canvas-studio/releases>。真实 Windows 重启替换流程仍需实机验收。
-
-首页浏览器选择支持 Edge、Chrome、Firefox，以及指定 Chromium 或 Firefox 主程序；启动和打开时自动保存选择。切换常用浏览器会清除旧的自定义路径，专用资料、缓存和下载仍放在数据目录。指定其他 Chromium 程序时按其路径区分资料目录。
-
-
-## v1.3 MCP、循环与 Skill
-
-画布 MCP 使用启动器同源 `/mcp/canvas`，导演台使用 `/mcp/director`，均要求本整合包专属本机 Bearer 凭据。浏览器通过同源会话读取连接配置；stdio 桥读取 `data/config/mcp-connection.json`，每次启动写入当前端口。两个工具名前缀分别为 `canvas_studio_`、`canvas_studio_director_`；与上游 3210 Agent 和配置目录分开。连接不依赖 Codex。画布桥在页面打开时连接，助手面板收起不影响工具执行；多个页面要求 workspace_id，导演台要求 workspace_handle。
-
-目录授权通过 Electron 原生对话框，保存为本机不透明授权编号。扫描跳过符号链接并限制数量／层级；导入时重新检查真实路径、大小与修改时间。循环将模板按拓扑顺序复制，每文件保留独立输入和结果；每步一份结果，组／导演台／嵌套循环会拒绝。每次推进先同步保存项目，状态不明时停止自动提交。浏览器重开不自动触发付费生成。
-
-Skill 使用原有本机用户 Skill API 与 SQLite，不另建浏览器私有库。启动器支持 CRUD、文本导入导出；文字节点、生成配置和 MCP generate_text 均可引用 Skill，实际请求前重新读取内容。Markdown 作为模型指令，不执行代码。
-
-视频运行环境由 `launcher/scripts/media-runtime.mjs` 从固定发行资产下载并校验 SHA-256，随包提供 FFmpeg 及原发行者许可／构建说明；不会要求用户安装 FFmpeg。浏览器将视频流传到本机临时目录解码，限定协议、格式、并发和超时，结束即删除临时文件。视频原始字节不会自动发给 AI，只在用户发送时携带抽帧图。
-
-新增验证脚本：`launcher/test/workspace-smoke.cjs`（需 headless 服务，CANVAS_SMOKE_FOLDER 指向含两个 UTF-8 文本的测试目录，work/video-fixture 放 H.264 8／10 位编码样例），`launcher/test/skills-launcher.cjs`（原生 Electron Skill 管理）。测试使用本地模型替身，不发起付费请求。
-
-导演台 MCP 的 open_project／save_project 只允许在启动器数据目录中读写 `.cclayproject` 文件。传入相对文件名即可；场景在线编辑仍由画布适配器自动保存完整项目与资源。
-
-
-## v1.3.3 更新网络与进程终止
-
-桌面启动器注入 Electron `net.fetch`，检查正式版本目录、读取 SHA-256 和流式下载均通过 Chromium 网络。该通道跟随系统代理／PAC，保留证书校验，不发送站点登录 Cookie。命令行测试仍可注入标准 fetch。参考：https://www.electronjs.org/docs/latest/api/net 。
-
-版本目录使用 GitHub Releases 分页接口，按语义版本排列正式发行版；不把普通 Git 标签当作发行版。显式选择历史版本后保存 upgrade／repair／rollback 安装意图，重新启动仍可恢复。安装前重新验证清单；旧版回退需要确认数据兼容性，项目和配置不会被替换为旧备份。
-
-运行时保存当前启动器创建的子进程对象，Windows 按 PID 使用 taskkill /T /F，Linux 开发使用独立进程组。不会按 node.exe 等通用名称批量结束进程。启动检查及等待支持取消，网关强制关闭连接，进程退出后才标记已停止。新增测试 `launcher/test/process-control.test.cjs` 在 Linux 和 Windows CI 执行；`launcher/test/update-proxy-launcher.cjs` 使用真实 Electron 网络与本机代理替身验证更新及停止流程，不访问付费模型接口。
+FFmpeg 由 `launcher/scripts/media-runtime.mjs` 按目标平台下载并校验，随包保留原发行者许可、构建说明和对应源码位置。视频在本机临时目录解码，完成后清理；模型只在用户发送时接收抽帧图。最终许可材料见 `resources/bundle/runtime/ffmpeg-notices`。

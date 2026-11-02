@@ -3,16 +3,23 @@ const fs = require('node:fs/promises');
 const { constants } = require('node:fs');
 const { spawn } = require('node:child_process');
 const crypto = require('node:crypto');
+const os = require('node:os');
 const { writableDirectory, atomicJson } = require('./files.cjs');
 
 async function browserExecutable(config, platform = process.platform, env = process.env) {
   if (config.browser === 'custom' && !config.browserPath) throw new Error('请选择指定浏览器的程序文件');
   const relative = { edge: 'Microsoft/Edge/Application/msedge.exe', chrome: 'Google/Chrome/Application/chrome.exe', firefox: 'Mozilla Firefox/firefox.exe' };
   const linux = { edge: ['/usr/bin/microsoft-edge', '/opt/microsoft/msedge/msedge'], chrome: ['/usr/bin/google-chrome', '/usr/bin/chromium'], firefox: ['/usr/bin/firefox', '/usr/bin/firefox-esr', '/opt/firefox/firefox', '/snap/bin/firefox'] };
+  const mac = { edge: 'Microsoft Edge.app/Contents/MacOS/Microsoft Edge', chrome: 'Google Chrome.app/Contents/MacOS/Google Chrome', firefox: 'Firefox.app/Contents/MacOS/firefox' };
   const candidates = config.browserPath ? [config.browserPath] : platform === 'win32'
     ? [env['PROGRAMFILES(X86)'], env.PROGRAMFILES, env.LOCALAPPDATA].filter(Boolean).map(base => path.join(base, relative[config.browser]))
+    : platform === 'darwin' ? ['/Applications', path.join(env.HOME || os.homedir(), 'Applications')].map(base => path.join(base, mac[config.browser] || ''))
     : linux[config.browser] || [];
-  for (const file of candidates) {
+  for (let file of candidates) {
+    if (platform === 'darwin' && file.endsWith('.app')) {
+      const contents = path.join(file, 'Contents/MacOS');
+      try { const names = (await fs.readdir(contents)).filter(name => !name.startsWith('.')); const preferred = mac[config.browser]?.split('/').pop() || path.basename(file, '.app'); const executable = names.find(name => name.toLowerCase() === preferred.toLowerCase()) || (names.length === 1 ? names[0] : ''); if (!executable) continue; file = path.join(contents, executable); } catch { continue; }
+    }
     try { if (!(await fs.stat(file)).isFile()) continue; await fs.access(file, platform === 'win32' ? constants.F_OK : constants.X_OK); return file; } catch {}
   }
   throw new Error(config.browserPath ? '指定的浏览器程序不可用，请在首页重新选择' : `未找到 ${ { edge: 'Edge', chrome: 'Chrome', firefox: 'Firefox' }[config.browser] || '浏览器' }，请在首页选择浏览器程序`);

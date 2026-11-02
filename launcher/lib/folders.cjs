@@ -9,7 +9,7 @@ class FolderStore {
   constructor(dataDir, choose) { this.dataDir = dataDir; this.choose = choose; this.file = path.join(dataDir, 'config', 'folders.json'); }
   async grants() { try { return JSON.parse(await fs.readFile(this.file, 'utf8')); } catch (e) { if (e.code === 'ENOENT') return {}; throw e; } }
   async select() {
-    if (!this.choose) throw new Error('请从 Windows 启动器启动工作台后选择文件夹');
+    if (!this.choose) throw new Error('请从桌面启动器启动工作台后选择文件夹');
     const selected = await this.choose(); if (!selected) return null;
     const root = await fs.realpath(selected); const grants = await this.grants();
     const id = Object.keys(grants).find(id => grants[id] === root) || crypto.randomUUID(); grants[id] = root;
