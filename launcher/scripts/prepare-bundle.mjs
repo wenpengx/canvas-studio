@@ -39,14 +39,14 @@ export async function prepareBundle(platform, arch = process.arch) {
   await run(go, ['build', '-trimpath', '-ldflags=-s -w', '-o', path.join(bundle, 'runtime', platform === 'win32' ? 'canvas-api.exe' : 'canvas-api'), '.'], { env: { ...process.env, TMPDIR: path.join(sourceRoot, 'work/tmp'), GOPATH: path.join(sourceRoot, 'work/cache/go'), GOCACHE: path.join(sourceRoot, 'work/cache/go-build'), CGO_ENABLED: '0', GOOS: platform === 'win32' ? 'windows' : platform, GOARCH: arch === 'x64' ? 'amd64' : 'arm64' } });
   await fs.rm(path.join(bundle, 'web'), { recursive: true, force: true });
   await fs.cp(path.join(sourceRoot, 'web/.next/standalone'), path.join(bundle, 'web'), { recursive: true, dereference: true });
-  await fs.cp(path.join(sourceRoot, 'web/.next/static'), path.join(bundle, 'web/.next/static'), { recursive: true });
-  await fs.cp(path.join(sourceRoot, 'web/public'), path.join(bundle, 'web/public'), { recursive: true, filter: name => path.basename(name) !== 'director' });
+  await fs.cp(path.join(sourceRoot, 'web/.next/static'), path.join(bundle, 'web/.next/static'), { recursive: true, dereference: true });
+  await fs.cp(path.join(sourceRoot, 'web/public'), path.join(bundle, 'web/public'), { recursive: true, dereference: true, filter: name => path.basename(name) !== 'director' });
   const director = path.join(bundle, 'integrations/cozyclay');
   await fs.mkdir(director, { recursive: true });
   await fs.rm(path.join(director, 'dist'), { recursive: true, force: true });
   for (const name of ['src', 'bin', 'mcp', 'dist', 'LICENSES', 'LICENSE', 'LICENSING.md', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_NOTICES_VIBE_WORKFLOW.md', 'package.json', 'package-lock.json']) await copy(path.join(sourceRoot, 'integrations/cozyclay', name), path.join(director, name), ['media']);
   if (!process.argv.includes('--reuse-deps')) await run('npm', ['ci', '--prefix', director, '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund']);
-  await fs.cp(path.join(sourceRoot, 'integrations/cozyclay/node_modules/three'), path.join(director, 'node_modules/three'), { recursive: true });
+  await fs.cp(path.join(sourceRoot, 'integrations/cozyclay/node_modules/three'), path.join(director, 'node_modules/three'), { recursive: true, dereference: true });
   if (!process.argv.includes('--reuse-deps')) await run('npm', ['ci', '--prefix', path.join(director, 'mcp'), '--ignore-scripts', '--no-audit', '--no-fund']);
   await fs.mkdir(path.join(bundle, 'launcher'), { recursive: true });
   await fs.copyFile(path.join(sourceRoot, 'launcher/cozy-runtime.mjs'), path.join(bundle, 'launcher/cozy-runtime.mjs'));

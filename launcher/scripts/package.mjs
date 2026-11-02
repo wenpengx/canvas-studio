@@ -25,7 +25,8 @@ await run('npm', ['ci', '--prefix', app, '--omit=dev', '--ignore-scripts', '--no
 const paths = await packager({ dir: app, out: path.join(taskWork, 'packaged'), name: '画布工作台启动器', executableName: '画布工作台启动器', platform, arch, electronVersion: '45.1.0', appVersion, appBundleId: 'io.github.wenpengx.canvas-studio', overwrite: true, asar: false, prune: false, tmpdir: path.join(taskWork, 'tmp'), download: { cacheRoot: path.join(taskWork, 'cache/electron') }, win32metadata: { ProductName: '画布工作台启动器', FileDescription: '本地画布与动态白模创作工作台', CompanyName: 'Canvas Studio' } });
 const packaged = paths[0], appBundle = path.join(packaged, '画布工作台启动器.app');
 const resources = platform === 'darwin' ? path.join(appBundle, 'Contents/Resources') : path.join(packaged, 'resources');
-await fs.cp(bundle, path.join(resources, 'bundle'), { recursive: true });
+// Dependency links must become files inside the app, never absolute links back to the build directory.
+await fs.cp(bundle, path.join(resources, 'bundle'), { recursive: true, dereference: true });
 await fs.copyFile(path.join(sourceRoot, 'launcher/使用说明.txt'), path.join(packaged, '使用说明.txt'));
 if (platform === 'darwin') {
   for (const binary of ['node', 'canvas-api', 'ffmpeg']) await run('/usr/bin/codesign', ['--force', '--sign', '-', path.join(resources, 'bundle/runtime', binary)]);
